@@ -1,0 +1,23 @@
+opencv-contrib-python
+numpy
+pandas
+streamlit
+openpyxl
+
+# Face recognition options (choose one later)
+insightface
+onnxruntime
+keras-facenet
+tensorflow
+
+# Live webcam capture in Streamlit
+streamlit-webrtc
+av
+
+# Notebook experimentation
+ipykernel
+jupyter
+
+
+Pillow 
+pytest

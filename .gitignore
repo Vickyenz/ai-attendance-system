@@ -1,0 +1,45 @@
+# Virtual environment
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Database
+*.db
+
+# Captured face data / embeddings (biometric — don't commit)
+data/student_images/*
+data/embeddings/*
+!data/student_images/.gitkeep
+!data/embeddings/.gitkeep
+
+data/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# TensorFlow / Keras
+*.h5
+*.keras
+saved_model/
+logs/
+
+# ONNX / InsightFace model cache
+*.onnx
+.insightface/
+
+# Streamlit
+.streamlit/
+
+# Environment variables / secrets
+.env
+
+# OS / Editor
+.DS_Store
+.vscode/
+.idea/
