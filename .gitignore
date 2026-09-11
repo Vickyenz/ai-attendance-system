@@ -11,6 +11,7 @@ __pycache__/
 
 # Database
 *.db
+*.sqlite3
 
 # Captured face data / embeddings (biometric — don't commit)
 data/student_images/*
@@ -33,6 +34,8 @@ logs/
 *.onnx
 .insightface/
 
+
+*.md
 # Streamlit
 .streamlit/
 

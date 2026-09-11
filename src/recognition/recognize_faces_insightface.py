@@ -2,15 +2,14 @@ import cv2
 import os
 import sys
 import numpy as np
-from insightface.app import FaceAnalysis
-
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+
 
 from src.utils.config import EMBEDDINGS_DIR, RECOGNITION_THRESHOLD
 from src.recognition.liveness import is_live_face
+from src.recognition.face_recognizer import InsightFaceRecognizer
 
-face_app = FaceAnalysis(name="buffalo_l", providers = ["CPUExecutionProviders"])
-face_app.prepare(ctx_id=0, det_size=(640,640))
+face_recognizer = InsightFaceRecognizer()
 
 recognition_threshold = RECOGNITION_THRESHOLD
 def load_known_embeddings(embeddings_dir = EMBEDDINGS_DIR):
@@ -32,7 +31,7 @@ def run_recognition(known_embeddings):
         if not ret:
             continue
 
-        faces = face_app.get(frame)
+        faces = face_recognizer.detect_and_extract(frame)
         for face in faces:
 
             box = face.bbox.astype(int)  # [x1, y1, x2, y2]
