@@ -8,8 +8,12 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "
 
 from src.utils.config import EMBEDDINGS_DIR
 
-face_app = FaceAnalysis(name="buffalo_l", providers = ["CPUExecutionProvider"])
-face_app.prepare(ctx_id=0, det_size=(640,640))
+from src.recognition.liveness import is_live_face
+from src.recognition.face_recognizer import InsightFaceRecognizer
+face_recognizer = InsightFaceRecognizer()
+
+"""face_app = FaceAnalysis(name="buffalo_l", providers = ["CPUExecutionProvider"])
+face_app.prepare(ctx_id=0, det_size=(640,640))"""
 
 def enroll_person(name, save_dir = EMBEDDINGS_DIR, num_samples = 15):
     cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
@@ -21,10 +25,18 @@ def enroll_person(name, save_dir = EMBEDDINGS_DIR, num_samples = 15):
         if  not ret:
             continue
 
-        faces = face_app.get(frame)
-
+        faces = face_recognizer.detect_and_extract(frame)
         if len(faces) == 1:
             face = faces[0]
+            box = face.bbox.astype(int)  # [x1, y1, x2, y2]
+                    
+            live, label, spoof_score = is_live_face(frame, face.bbox, threshold=0.5)
+    
+            if not live:
+                cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), (0, 0, 255), 2)
+                cv2.putText(frame, f"SPOOF ({label} {spoof_score:.2f})",
+                            (box[0], box[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                continue
             embeddings.append(face.embedding)
             count += 1
 
