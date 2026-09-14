@@ -12,8 +12,7 @@ from src.recognition.liveness import is_live_face
 from src.recognition.face_recognizer import InsightFaceRecognizer
 face_recognizer = InsightFaceRecognizer()
 
-"""face_app = FaceAnalysis(name="buffalo_l", providers = ["CPUExecutionProvider"])
-face_app.prepare(ctx_id=0, det_size=(640,640))"""
+
 
 def enroll_person(name, save_dir = EMBEDDINGS_DIR, num_samples = 15):
     cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
