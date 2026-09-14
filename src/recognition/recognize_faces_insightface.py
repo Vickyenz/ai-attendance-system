@@ -1,31 +1,24 @@
 import cv2
 import os
 import sys
-import numpy as np
+
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
-
-from src.utils.config import EMBEDDINGS_DIR, RECOGNITION_THRESHOLD
+from src.recognition.face_recognizer import (
+    InsightFaceRecognizer,
+    load_known_embeddings,
+    match_face,
+)
 from src.recognition.liveness import is_live_face
-from src.recognition.face_recognizer import InsightFaceRecognizer
+from src.utils.config import DEFAULT_CAMERA_INDEX, LIVENESS_THRESHOLD, RECOGNITION_THRESHOLD
 
 face_recognizer = InsightFaceRecognizer()
 
 recognition_threshold = RECOGNITION_THRESHOLD
-def load_known_embeddings(embeddings_dir = EMBEDDINGS_DIR):
-    known = {}
-    for filename in os.listdir(embeddings_dir):
-        if filename.endswith(".npy"):
-            name = filename.replace(".npy", "")
-            known[name] = np.load(os.path.join(embeddings_dir, filename))
 
-    return known
-
-def cosine_similarity(a,b):
-    return np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b))
 
 def run_recognition(known_embeddings):
-    cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
+    cap = cv2.VideoCapture(DEFAULT_CAMERA_INDEX, cv2.CAP_DSHOW)
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -36,28 +29,17 @@ def run_recognition(known_embeddings):
 
             box = face.bbox.astype(int)  # [x1, y1, x2, y2]
 
-            live, label, spoof_score = is_live_face(frame, face.bbox, threshold=0.5)
+            live, label, spoof_score = is_live_face(frame, face.bbox, threshold=LIVENESS_THRESHOLD)
 
             if not live:
                 cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), (0, 0, 255), 2)
                 cv2.putText(frame, f"SPOOF ({label} {spoof_score:.2f})",
                             (box[0], box[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                 continue
-            best_match = "Unknown"
-            best_score = 0
 
-            
-
-            for name, face_emb in known_embeddings.items():
-                score = cosine_similarity(face.embedding, face_emb)
-                if score > best_score:
-                    best_score = score
-                    best_match = name
-            if best_score < recognition_threshold:
-                best_match = "Unknown"
+            best_match, best_score = match_face(face.embedding, known_embeddings, threshold=recognition_threshold)
             color = (0, 255, 0) if best_match != "Unknown" else (0, 0, 255)
 
-            box = face.bbox.astype(int)
             cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), color, 2)
             cv2.putText(frame, f"{best_match} {best_score:.2f}", (box[0], box[1]-10), cv2.FONT_HERSHEY_COMPLEX, 0.8, color, 2)
 
@@ -68,7 +50,8 @@ def run_recognition(known_embeddings):
     cap.release()
     cv2.destroyAllWindows()
 
-if __name__  == "__main__":
+
+if __name__ == "__main__":
     known = load_known_embeddings()
     print(f"Loaded {len(known)} known faces: {list(known.keys())}")
     run_recognition(known)
