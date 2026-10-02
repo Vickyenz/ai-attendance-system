@@ -21,3 +21,8 @@ jupyter
 
 Pillow 
 pytest
+
+bcrypt
+Pyjwt
+
+email-validator

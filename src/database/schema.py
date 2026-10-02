@@ -6,7 +6,7 @@ from src.utils.config import DB_PATH
 
 
 SCHEMA = """
-CREATE TABLE lecturers (
+CREATE TABLE IF NOT EXISTS lecturers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     full_name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE lecturers (
     created_at TEXT NOT NULL
 );
 
-CREATE TABLE students (
+CREATE TABLE IF NOT EXISTS students (
     matric_number TEXT NOT NULL,
     lecturer_id INTEGER NOT NULL REFERENCES lecturers(id),
     full_name TEXT NOT NULL,
