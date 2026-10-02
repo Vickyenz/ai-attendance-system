@@ -22,7 +22,7 @@ MIN_PASSWORD_LENGTH = 8
 
 def validate_password(password):
     if len(password) < MIN_PASSWORD_LENGTH:
-        raise ValueError(f"PAssword must be at least {MIN_PASSWORD_LENGTH} characters")
+        raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
     if len(password.encode("utf-8")) > 72:
         raise ValueError("Password is too long")
 
@@ -61,7 +61,7 @@ def signup_lecturer(full_name, email, password, institution=None):
         raise ValueError("Full name is required")
 
     try:
-        email = validate_email(email, check_deliverability=True).normalized
+        email = validate_email(email, check_deliverability=False).normalized
 
     except EmailNotValidError as error:
         raise ValueError(f"Invalid email:{error}") from error
@@ -72,8 +72,8 @@ def signup_lecturer(full_name, email, password, institution=None):
         with get_connection() as connection:
             cursor = connection.execute(
                 """
-                INSERT INTO lecturers (full_name,, email, password_hash, institution, created_at)
-                VALUES (?,?,?,?,?)"""
+                INSERT INTO lecturers (full_name, email, password_hash, institution, created_at)
+                VALUES (?,?,?,?,?)""",
                 (full_name.strip(), email, hash_password(password), institution, datetime.now(timezone.utc).isoformat()),
             )
 
@@ -104,7 +104,7 @@ def login_lecturer(email, password):
     initialize_database()
     email = email.strip().lower()
 
-    with get_connection as connection:
+    with get_connection() as connection:
         row = connection.execute(
             "SELECT id, password_hash FROM lecturers WHERE email = ?", (email,)
         ).fetchone()
@@ -135,7 +135,7 @@ if __name__ == "__main__":
             print(f"Account created with id {lid}")
 
         elif choice == "2":
-            token = login_lecturer(input("Email: "), input("Password"))
+            token = login_lecturer(input("Email: "), input("Password: "))
             print(f"Token: {token}")
             print(f"Decoded lecturer id: {decode_access_token(token)}")
 
