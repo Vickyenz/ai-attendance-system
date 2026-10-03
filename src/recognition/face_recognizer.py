@@ -3,8 +3,8 @@ import os
 import numpy as np
 from insightface.app import FaceAnalysis
 
-from src.utils.config import EMBEDDINGS_DIR, RECOGNITION_THRESHOLD
-
+from src.utils.config import RECOGNITION_THRESHOLD
+from src.database.schema import get_connection
 _face_app = None
 
 
@@ -19,13 +19,20 @@ def get_face_app():
     return _face_app
 
 
-def load_known_embeddings(embeddings_dir=EMBEDDINGS_DIR):
-    known = {}
-    for filename in os.listdir(embeddings_dir):
-        if filename.endswith(".npy"):
-            name = filename.replace(".npy", "")
-            known[name] = np.load(os.path.join(embeddings_dir, filename))
-    return known
+def embedding_to_blob(embedding):
+    return np.asarray(embedding, dtype=np.float32).tobytes()
+
+def blob_to_embedding(blob):
+    return np.frombuffer(blob, dtype=np.float32)
+
+def load_known_embeddings(lecturer_id):
+    with get_connection() as connection:
+        rows = connection.execute(
+            "SELECT matric_number, embedding FROM students WHERE lecturer_id = ?",
+            (lecturer_id,),
+        ).fetchall()
+
+    return {matric: blob_to_embedding(blob) for matric, blob in rows}
 
 
 def cosine_similarity(a, b):

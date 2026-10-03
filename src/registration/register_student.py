@@ -5,16 +5,14 @@ from datetime import datetime, timezone
 import cv2
 import numpy as np
 import sys
-import os
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
 from src.database.schema import get_connection, initialize_database
-from src.recognition.face_recognizer import InsightFaceRecognizer
+from src.recognition.face_recognizer import InsightFaceRecognizer, embedding_to_blob
 from src.recognition.liveness import is_live_face
 from src.utils.config import (
     DEFAULT_CAMERA_INDEX,
-    EMBEDDINGS_DIR,
     ENROLLMENT_NUM_SAMPLES,
     LIVENESS_THRESHOLD,
 )
@@ -30,82 +28,67 @@ def capture_samples(
     if not capture.isOpened():
         raise RuntimeError(f"Unable to open camera index {camera_index}")
 
-    embeddings = []
+    frames = []
     try:
-        while len(embeddings) < num_samples:
+        while len(frames) < num_samples:
             ret, frame = capture.read()
             if not ret:
                 continue
 
             faces = recognizer.detect_and_extract(frame)
+            display_frame = frame.copy()
+            status_text = f"Samples: {len(frames)}/{num_samples}  | SPACE: capture  |  ESC: cancel"
+            status_color = (0, 255, 0)
             if len(faces) == 1:
                 face = faces[0]
                 box = face.bbox.astype(int)
-                live, label, score = is_live_face(
-                    frame,
-                    face.bbox,
-                    threshold=liveness_threshold,
-                )
-                color = (0, 255, 0) if live else (0, 0, 255)
-                message = (
-                    f"Samples: {len(embeddings)} / {num_samples}"
-                    if live
-                    else f"REJECTED: {label} {score:.2f}"
-                )
+                cv2.rectangle(display_frame,(box[0], box[1]),(box[2], box[3]),(0, 255, 0),2,)
 
-                cv2.rectangle(
-                    frame,
-                    (box[0], box[1]),
-                    (box[2], box[3]),
-                    color,
-                    2,
-                )
-                cv2.putText(
-                    frame,
-                    message,
-                    (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    color,
-                    2,
-                )
+            else:
+                face = None
+                if len(faces) > 1:
+                    status_text = "Multiple faces detected -  only one person allowed"
+                    status_color = (0, 0, 255)
 
-                if live:
-                    embeddings.append(face.embedding.copy())
+            
+            cv2.putText(display_frame, status_text, (10, 30),cv2.FONT_HERSHEY_SIMPLEX,0.7, status_color,2)
+            cv2.imshow("Register Student", display_frame)
 
-            cv2.imshow("Student Registration", frame)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == 27:
+                frames = []
                 break
+            elif key == 32 and len(faces) == 1:
+
+                live, label, score = is_live_face(frame,face.bbox,threshold=liveness_threshold)
+                if not live:
+                    print(f"[REJECTED] Spoof suspected ({label}, {score:.2f}) - try again.")
+                    continue
+                frames.append(frame.copy())
+
     finally:
-        capture.release()
-        cv2.destroyAllWindows()
+                capture.release()
+                cv2.destroyAllWindows()
 
-    return embeddings
+    return frames
 
 
-def generate_embedding(sample_embeddings):
-    if not sample_embeddings:
-        raise ValueError("At least one face embedding is required")
-
-    embeddings = np.asarray(sample_embeddings, dtype=np.float32)
-    if embeddings.ndim != 2:
-        raise ValueError("Sample embeddings must be a two-dimensional array")
+def generate_embedding(frames):
+    recognizer =  InsightFaceRecognizer()
+    embeddings = []
+    for frame in frames:
+        faces = recognizer.detect_and_extract(frame)
+        if len(faces) == 1:
+            embeddings.append(faces[0].embedding)
+    if not embeddings:
+        raise ValueError("No valid face embeddings could be extracted from the captured frames")
 
     return np.mean(embeddings, axis=0)
 
-
-def save_student(
-    matric_number,
-    full_name,
-    embedding,
-    department=None,
-    level=None,
-):
+def save_student(lecturer_id, matric_number, full_name, embedding, department=None,level=None):
     initialize_database()
-    os.makedirs(EMBEDDINGS_DIR, exist_ok=True)
-    embedding_path = os.path.join(EMBEDDINGS_DIR, f"{matric_number}.npy")
     registered_at = datetime.now(timezone.utc).isoformat()
-    np.save(embedding_path, np.asarray(embedding, dtype=np.float32))
 
     try:
         with get_connection() as connection:
@@ -113,66 +96,49 @@ def save_student(
                 """
                 INSERT INTO students (
                     matric_number,
+                    lecturer_id,
                     full_name,
                     department,
                     level,
-                    embedding_path,
+                    embedding,
                     registered_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     matric_number,
+                    lecturer_id,
                     full_name,
                     department,
                     level,
-                    embedding_path,
+                    embedding_to_blob(embedding),
                     registered_at,
                 ),
             )
     except sqlite3.IntegrityError as error:
-        if os.path.exists(embedding_path):
-            os.remove(embedding_path)
         raise ValueError(
-            f"A student with matric number {matric_number} already exists"
+            f"A student with matric number {matric_number} already exists for this lecturer"
         ) from error
 
-    return embedding_path
 
-
-def register_student(
-    matric_number,
-    full_name,
-    department=None,
-    level=None,
-    camera_index=DEFAULT_CAMERA_INDEX,
-):
-    samples = capture_samples(camera_index=camera_index)
-    if len(samples) < ENROLLMENT_NUM_SAMPLES:
+def register_student(lecturer_id,matric_number,full_name,department=None,level=None,camera_index=DEFAULT_CAMERA_INDEX):
+    frames = capture_samples(camera_index=camera_index)
+    if len(frames) < ENROLLMENT_NUM_SAMPLES:
         raise RuntimeError("Registration cancelled before enough samples were captured")
 
-    embedding = generate_embedding(samples)
-    return save_student(
-        matric_number,
-        full_name,
-        embedding,
-        department=department,
-        level=level,
-    )
+    embedding = generate_embedding(frames)
+    save_student(lecturer_id, matric_number, full_name, embedding, department=department, level=level)
 
 
 if __name__ == "__main__":
-    student_matric = input("Enter matric number: ").strip()
-    student_name = input("Enter full name: ").strip()
-    student_department = input("Enter department (optional): ").strip() or None
-    student_level = input("Enter level (optional): ").strip() or None
+    print("=== Student Registration ===")
+    lecturer_id = int(input("Your lecturer id: ").strip())
+    matric = input("Enter matric number: ").strip()
+    name = input("Enter full name: ").strip()
+    department = input("Enter department (optional): ").strip() or None
+    lvl = input("Enter level (optional): ").strip() or None
 
     try:
-        path = register_student(
-            student_matric,
-            student_name,
-            department=student_department,
-            level=student_level,
-        )
-        print(f"Registration complete. Embedding saved to {path}")
+        register_student(lecturer_id,matric,name,department=department,level=lvl)
+        print(f"[SUCCESS] {matric} registered for lecturer {lecturer_id}.")
     except (RuntimeError, ValueError) as error:
         print(f"Registration failed: {error}")
