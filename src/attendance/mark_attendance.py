@@ -31,7 +31,7 @@ def _normalize_session_date(session_date=None):
     raise ValueError("session_date must be a date string, ISO datetime, or None")
 
 
-def mark_attendance(matric_number, course_code, session_date=None):
+def mark_attendance(lecturer_id, matric_number, course_id, session_date=None):
     """
     Records attendance for a student in a course on a given session date.
     If attendance has already been recorded, the function silently returns False
@@ -41,12 +41,12 @@ def mark_attendance(matric_number, course_code, session_date=None):
     initialize_database()
     normalized_date = _normalize_session_date(session_date)
 
-    if not is_enrolled(matric_number, course_code):
+    if not is_enrolled(lecturer_id, matric_number, course_id):
         raise ValueError(
-            f"Cannot mark attendance: {matric_number} is not enrolled in {course_code}"
+            f"Cannot mark attendance: {matric_number} is not enrolled in {course_id}"
         )
 
-    if is_attendance_marked(matric_number, course_code, normalized_date):
+    if is_attendance_marked(lecturer_id, matric_number, course_id, normalized_date):
         return False
 
     recorded_at = datetime.now(timezone.utc).isoformat()
@@ -54,17 +54,17 @@ def mark_attendance(matric_number, course_code, session_date=None):
         with get_connection() as connection:
             cursor = connection.execute(
                 """
-                INSERT INTO attendance (matric_number, course_code, session_date, recorded_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO attendance (matric_number, lecturer_id, course_id, session_date, recorded_at)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (matric_number, course_code, normalized_date, recorded_at),
+                (matric_number, lecturer_id, course_id, normalized_date, recorded_at),
             )
         return cursor.lastrowid
     except sqlite3.IntegrityError:
         return False
 
 
-def is_attendance_marked(matric_number, course_code, session_date=None):
+def is_attendance_marked(lecturer_id, matric_number, course_id, session_date=None):
     """
     Returns True if attendance has already been recorded for the student/course/date.
     """
@@ -74,14 +74,14 @@ def is_attendance_marked(matric_number, course_code, session_date=None):
         result = connection.execute(
             """
             SELECT 1 FROM attendance
-            WHERE matric_number = ? AND course_code = ? AND session_date = ?
+            WHERE matric_number = ? AND lecturer_id =? AND course_id = ? AND session_date = ?
             """,
-            (matric_number, course_code, normalized_date),
+            (matric_number,lecturer_id, course_id, normalized_date),
         ).fetchone()
     return result is not None
 
 
-def list_attendance(course_code=None, session_date=None):
+def list_attendance(lecturer_id, course_id=None, session_date=None):
     """
     Returns attendance rows as a list of dictionaries.
     When course_code is provided, only that course is included.
@@ -90,48 +90,26 @@ def list_attendance(course_code=None, session_date=None):
     initialize_database()
     normalized_date = _normalize_session_date(session_date) if session_date is not None else None
 
-    if course_code is not None and normalized_date is not None:
-        query = """
+    base_select = """
             SELECT a.matric_number, s.full_name, s.department, s.level,
-                   a.course_code, a.session_date, a.recorded_at
+                    a.course_id, c.course_code, a.session_date, a.recorded_at
             FROM attendance a
-            JOIN students s ON s.matric_number = a.matric_number
-            WHERE a.course_code = ? AND a.session_date = ?
-            ORDER BY s.full_name
-        """
-        params = (course_code, normalized_date)
-    elif course_code is not None:
-        query = """
-            SELECT a.matric_number, s.full_name, s.department, s.level,
-                   a.course_code, a.session_date, a.recorded_at
-            FROM attendance a
-            JOIN students s ON s.matric_number = a.matric_number
-            WHERE a.course_code = ?
-            ORDER BY a.session_date DESC, s.full_name
-        """
-        params = (course_code,)
-    elif normalized_date is not None:
-        query = """
-            SELECT a.matric_number, s.full_name, s.department, s.level,
-                   a.course_code, a.session_date, a.recorded_at
-            FROM attendance a
-            JOIN students s ON s.matric_number = a.matric_number
-            WHERE a.session_date = ?
-            ORDER BY a.course_code, s.full_name
-        """
-        params = (normalized_date,)
-    else:
-        query = """
-            SELECT a.matric_number, s.full_name, s.department, s.level,
-                   a.course_code, a.session_date, a.recorded_at
-            FROM attendance a
-            JOIN students s ON s.matric_number = a.matric_number
-            ORDER BY a.session_date DESC, a.course_code, s.full_name
-        """
-        params = ()
+            JOIN students s ON s.matric_number = a.matric_number AND s.lecturer_id = a.lecturer_id
+            JOIN courses c ON c.id = a.cousre_id AND c.lecturer_id = a.lecturer_id
+            WHERE a.lecturer_id = ?
+    """
+    params = [lecturer_id]
+    if course_id is not None:
+        base_select += " AND a.course_id = ?"
+        params.append(course_id)
 
+    if normalized_date is not None:
+        base_select += " AND a.session_date = ?"
+        params.append(normalized_date)
+
+    base_select += " ORDER BY a.session_date DESC, c.course_code, s.full_name"
     with get_connection() as connection:
-        rows = connection.execute(query, params).fetchall()
+        rows = connection.execute(base_select, params).fetchall()
 
     return [
         {
@@ -139,15 +117,16 @@ def list_attendance(course_code=None, session_date=None):
             "full_name": row[1],
             "department": row[2],
             "level": row[3],
-            "course_code": row[4],
-            "session_date": row[5],
-            "recorded_at": row[6],
+            "course_id": row[4],
+            "course_code": row[5],
+            "session_date": row[6],
+            "recorded_at": row[7],
         }
         for row in rows
     ]
 
 
-def list_student_attendance(matric_number):
+def list_student_attendance(lecturer_id, matric_number):
     """
     Returns all attendance records for a specific student.
     """
@@ -155,21 +134,22 @@ def list_student_attendance(matric_number):
     with get_connection() as connection:
         rows = connection.execute(
             """
-            SELECT a.course_code, c.course_name, a.session_date, a.recorded_at
+            SELECT a.course_id, c.course_code, c.course_name, a.session_date, a.recorded_at
             FROM attendance a
-            JOIN courses c ON c.course_code = a.course_code
-            WHERE a.matric_number = ?
+            JOIN courses c ON c.id = a.course_id AND c.lecturer_id = a.lecturer_id
+            WHERE a.matric_number = ? AND a.lecturer_id = ?
             ORDER BY a.session_date DESC, a.course_code
             """,
-            (matric_number,),
+            (matric_number,lecturer_id),
         ).fetchall()
 
     return [
         {
-            "course_code": row[0],
-            "course_name": row[1],
-            "session_date": row[2],
-            "recorded_at": row[3],
+            "course_id": row[0],
+            "course_code": row[1],
+            "course_name": row[2],
+            "session_date": row[3],
+            "recorded_at": row[4],
         }
         for row in rows
     ]
@@ -181,28 +161,30 @@ if __name__ == "__main__":
     print("2. Check attendance")
     print("3. List attendance for a course")
     print("4. List all attendance")
+
+    lecturer_id = int(input("Your lecturer id: ").strip())
     choice = input("Choose an option: ").strip()
 
     try:
         if choice == "1":
             matric = input("Matric number: ").strip()
-            course = input("Course code: ").strip()
+            course_id = int(input("Course id: ").strip())
             session = input("Session date (YYYY-MM-DD, optional): ").strip() or None
-            row_id = mark_attendance(matric, course, session_date=session)
-            print(f"Attendance recorded with id {row_id}")
+            result = mark_attendance(lecturer_id, matric, course_id, session_date=session)
+            print(f"Attendance recorded with id {result}" if result else "Already marked")
         elif choice == "2":
             matric = input("Matric number: ").strip()
-            course = input("Course code: ").strip()
+            course_id = int(input("Course id: ").strip())
             session = input("Session date (YYYY-MM-DD, optional): ").strip() or None
-            marked = is_attendance_marked(matric, course, session_date=session)
+            marked = is_attendance_marked(lecturer_id, matric, course_id, session_date=session)
             print(f"Attendance marked: {marked}")
         elif choice == "3":
-            course = input("Course code: ").strip()
+            course_id = int(input("Course id: ").strip())
             session = input("Session date (YYYY-MM-DD, optional): ").strip() or None
-            for entry in list_attendance(course_code=course, session_date=session):
+            for entry in list_attendance(lecturer_id, course_id=course_id, session_date=session):
                 print(f"  {entry['matric_number']} — {entry['full_name']} — {entry['session_date']}")
         elif choice == "4":
-            for entry in list_attendance():
+            for entry in list_attendance(lecturer_id):
                 print(
                     f"  {entry['matric_number']} | {entry['course_code']} | {entry['session_date']}"
                 )
