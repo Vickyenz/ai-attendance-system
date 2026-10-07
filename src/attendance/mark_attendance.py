@@ -64,7 +64,7 @@ def mark_attendance(lecturer_id, matric_number, course_id, session_date=None):
         return False
 
 
-def is_attendance_marked(lecturer_id, matric_number, course_id, session_date=None):
+def is_attendance_marked(lecturer_id, matric_number, course_id, session_date):
     """
     Returns True if attendance has already been recorded for the student/course/date.
     """
@@ -95,7 +95,7 @@ def list_attendance(lecturer_id, course_id=None, session_date=None):
                     a.course_id, c.course_code, a.session_date, a.recorded_at
             FROM attendance a
             JOIN students s ON s.matric_number = a.matric_number AND s.lecturer_id = a.lecturer_id
-            JOIN courses c ON c.id = a.cousre_id AND c.lecturer_id = a.lecturer_id
+            JOIN courses c ON c.id = a.course_id AND c.lecturer_id = a.lecturer_id
             WHERE a.lecturer_id = ?
     """
     params = [lecturer_id]

@@ -28,12 +28,12 @@ from src.recognition.face_recognizer import (
     match_face,
 )
 from src.recognition.liveness import is_live_face
-from src.courses.course_manager import is_enrolled, list_courses
-from src.attendance.mark_attendance import mark_attendance, is_attendance_marked
+from src.courses.course_manager import is_enrolled, list_courses, get_course_id
+from src.attendance.mark_attendance import mark_attendance
 from src.utils.config import RECOGNITION_THRESHOLD, LIVENESS_THRESHOLD, DEFAULT_CAMERA_INDEX
 
 
-def run_session(course_code, session_date=None, camera_index=DEFAULT_CAMERA_INDEX):
+def run_session(lecturer_id, course_id, session_date=None, camera_index=DEFAULT_CAMERA_INDEX):
     """
     Runs a live attendance session for the given course. Opens the webcam,
     recognizes enrolled students, checks liveness, and marks attendance —
@@ -44,14 +44,14 @@ def run_session(course_code, session_date=None, camera_index=DEFAULT_CAMERA_INDE
     Press 'q' to end the session.
     """
     recognizer = InsightFaceRecognizer()
-    known_embeddings = load_known_embeddings()
+    known_embeddings = load_known_embeddings(lecturer_id)
 
     if not known_embeddings:
         print("[ERROR] No enrolled students found in embeddings directory.")
         return
 
     print(f"[INFO] Loaded {len(known_embeddings)} known face(s).")
-    print(f"[INFO] Starting session for course: {course_code}")
+    print(f"[INFO] Starting session for course: {course_id}")
 
     # Local cache so we don't re-query the DB every single frame for a
     # student who's still sitting in view after being marked.
@@ -94,11 +94,11 @@ def run_session(course_code, session_date=None, camera_index=DEFAULT_CAMERA_INDE
                 status_text = f"{best_match} — already checked in"
                 status_color = (0, 255, 255)  # yellow
             else:
-                if not is_enrolled(best_match, course_code):
-                    status_text = f"{best_match} — NOT ENROLLED in {course_code}"
+                if not is_enrolled(lecturer_id, best_match, course_id):
+                    status_text = f"{best_match} — NOT ENROLLED in {course_id}"
                     status_color = (0, 0, 255)
                 else:
-                    result = mark_attendance(best_match, course_code, session_date=session_date)
+                    result = mark_attendance(lecturer_id, best_match, course_id, session_date=session_date)
                     already_processed_this_session.add(best_match)
 
                     if result is False:
@@ -107,13 +107,13 @@ def run_session(course_code, session_date=None, camera_index=DEFAULT_CAMERA_INDE
                     else:
                         status_text = f"{best_match} — ATTENDANCE MARKED"
                         status_color = (0, 255, 0)
-                        print(f"[MARKED] {best_match} — {course_code}")
+                        print(f"[MARKED] {best_match}")
 
             cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), status_color, 2)
             cv2.putText(frame, status_text, (box[0], box[1] - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
 
-        cv2.putText(frame, f"Course: {course_code} | Marked: {len(already_processed_this_session)} | 'q' to end session",
+        cv2.putText(frame, f"Course: {course_id} | Marked: {len(already_processed_this_session)} | 'q' to end session",
                     (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         cv2.imshow("Attendance Session", frame)
 
@@ -123,22 +123,24 @@ def run_session(course_code, session_date=None, camera_index=DEFAULT_CAMERA_INDE
     cap.release()
     cv2.destroyAllWindows()
 
-    print(f"\n[SESSION ENDED] {len(already_processed_this_session)} student(s) processed for {course_code}.")
+    print(f"\n[SESSION ENDED] {len(already_processed_this_session)} student(s) processed for {course_id}.")
 
 
 if __name__ == "__main__":
     print("=== Start Attendance Session ===")
-    courses = list_courses()
+    lecturer_id = int(input("Your lecturer id: ").strip())
+    courses = list_courses(lecturer_id)
 
     if not courses:
         print("[ERROR] No courses registered. Add a course first.")
         sys.exit(1)
 
-    print("Available courses:")
+    print("Your courses:")
     for c in courses:
         print(f"  {c['course_code']} — {c['course_name']}")
 
     code = input("\nEnter course code to start session: ").strip()
+    course_id = get_course_id(lecturer_id, code)
     date_input = input("Session date (YYYY-MM-DD, leave blank for today): ").strip() or None
 
-    run_session(code, session_date=date_input)
+    run_session(lecturer_id, course_id, session_date=date_input)

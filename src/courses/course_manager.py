@@ -154,7 +154,6 @@ def list_courses(lecturer_id):
         for row in rows
     ]
 
-
 if __name__ == "__main__":
     print("=== Course Manager (CLI test) ===")
     print("1. Add course")
