@@ -26,7 +26,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "
 
 from src.attendance.mark_attendance import list_attendance
 from src.utils.config import REPORTS_DIR
-
+from src.courses.course_manager import get_course_id
 
 COLUMN_HEADERS = [
     "Student Name",
@@ -92,7 +92,7 @@ def _build_workbook(rows, title):
     return workbook
 
 
-def export_attendance(course_code=None, session_date=None, output_path=None):
+def export_attendance(lecturer_id, course_id=None, session_date=None, output_path=None):
     """
     Exports attendance records to an .xlsx file.
 
@@ -107,7 +107,7 @@ def export_attendance(course_code=None, session_date=None, output_path=None):
     Raises RuntimeError if there are no matching attendance records to export.
     Returns the full path to the written file.
     """
-    rows = list_attendance(course_code=course_code, session_date=session_date)
+    rows = list_attendance(lecturer_id, course_id=course_id, session_date=session_date)
 
     if not rows:
         raise RuntimeError(
@@ -115,7 +115,7 @@ def export_attendance(course_code=None, session_date=None, output_path=None):
         )
 
     os.makedirs(REPORTS_DIR, exist_ok=True)
-
+    course_code = rows[0]["course_code"] if course_id else None
     if output_path is None:
         if course_code and session_date:
             filename = f"{course_code}_{session_date}.xlsx"
@@ -139,11 +139,13 @@ if __name__ == "__main__":
     print("=== Attendance Report Export ===")
     print("Leave a field blank to skip that filter.")
 
+    lecturer_id = int(input("Your lecturer id: ").strip())
     course = input("Course code (optional): ").strip() or None
     date_input = input("Session date, YYYY-MM-DD (optional): ").strip() or None
 
+    course_id = get_course_id(lecturer_id, course) if course else None
     try:
-        path = export_attendance(course_code=course, session_date=date_input)
+        path = export_attendance(lecturer_id, course_id=course_id, session_date=date_input)
         print(f"[SUCCESS] Report exported to: {path}")
     except RuntimeError as error:
         print(f"[FAILED] {error}")
