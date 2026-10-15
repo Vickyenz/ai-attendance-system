@@ -106,6 +106,15 @@ def get_spoof_engine():
         _engine = AntiSpoofingONNX(model_path=_MODEL_PATH, scale=2.7)
     return _engine
 
+def get_real_probability(frame_bgr, bbox_xyxy):
+    """Returns (probability of the 'Real' class, whether Real was the top class)."""
+    engine = get_spoof_engine()
+    input_tensor = engine._preprocess(frame_bgr, engine._xyxy2xywh(bbox_xyxy))
+    logits = engine.session.run([engine.output_name], {engine.input_name: input_tensor})[0]
+    probs = engine._softmax(logits)
+    return float(probs[0, 1]), int(np.argmax(probs)) == 1
+
+
 
 def is_live_face(frame_bgr, bbox_xyxy, threshold=0.5):
     """
