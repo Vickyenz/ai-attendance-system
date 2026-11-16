@@ -1,0 +1,5 @@
+export const CAPTURE_WIDTH = 640;
+export const JPEG_QUALITY = 0.8;
+export const RECOGNIZE_INTERVAL_MS = 1000;
+export const REGISTER_SAMPLE_COUNT = 20;
+export const REGISTER_SAMPLE_INTERVAL_MS = 400;
